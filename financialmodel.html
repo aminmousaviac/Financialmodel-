@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شبیه‌ساز تعاملی مدل مالی Fund of Funds</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+        .summary-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .summary-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .tab-button.active {
+            border-color: #3b82f6;
+            background-color: #3b82f6;
+            color: white;
+        }
+        .tab-content { display: none; animation: fadeIn 0.5s ease-in-out; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .input-group { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 1rem; }
+        .input-group h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: #1e3a8a; }
+        .data-card { background-color: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #6366f1; }
+        .data-card.fof.IRR { border-left-color: #8b5cf6; }
+        .data-card.fof.USD { border-left-color: #db2777; }
+        .data-card.vc { border-left-color: #3b82f6; }
+        .data-card.pe { border-left-color: #f59e0b; }
+        input:disabled, input[readonly] { background-color: #f3f4f6; cursor: not-allowed; opacity: 0.7; }
+        .org-chart { position: relative; display: flex; flex-direction: column; align-items: center; font-size: 0.9rem; padding-top: 20px; padding-bottom: 20px; min-height: 600px; }
+        .org-level { display: flex; justify-content: center; margin: 40px 0; flex-wrap: wrap; z-index: 1; gap: 20px; }
+        .org-node { background-color: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 24px; text-align: center; position: relative; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); min-width: 150px; }
+        .cashflow-text { font-size: 0.85rem; font-weight: bold; }
+        .fs-table { width: 100%; text-align: right; font-size: 0.9rem; }
+        .fs-table td { padding: 8px 12px; }
+        .fs-table tr:not(:last-child) { border-bottom: 1px solid #f3f4f6; }
+        .fs-table .total-row { font-weight: bold; border-top: 2px solid #e5e7eb; background-color: #f9fafb;}
+        .modal-content { animation: scaleIn 0.3s ease-out; }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .animated-path {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: draw 2s ease-out forwards;
+        }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 sm:p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header Section -->
+        <header class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-200 no-print">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-blue-600">شبیه‌ساز مالی Fund of Funds (FOF)</h1>
+                    <p class="text-gray-500 mt-1">یک ابزار تعاملی برای تحلیل و شبیه‌سازی سرمایه‌گذاری‌ها</p>
+                </div>
+                <div>
+                    <button onclick="showHelpModal()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition active:scale-95">راهنما</button>
+                    <button onclick="window.print()" class="ml-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition active:scale-95">چاپ گزارش</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content: Inputs and Outputs -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Left Column: Inputs Panel -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md border border-gray-200 no-print">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">۱. مفروضات مدل</h2>
+                <div id="assumptions_panel">
+                    <!-- Dynamic sections will be rendered here by JS -->
+                </div>
+                <button id="update_button" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-all mt-4 active:scale-95">به‌روزرسانی و محاسبه</button>
+            </div>
+
+            <!-- Right Column: Dashboard and Tabs -->
+            <div class="lg:col-span-2">
+                <!-- Summary Dashboard Section -->
+                <section id="summary-dashboard" class="printable-section">
+                    <h2 class="text-xl font-bold mb-4">داشبورد خلاصه نتایج (تلفیقی به ریال)</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">مجموع تعهدات</h3><p id="total_commitment" class="text-2xl font-bold text-blue-600">۰</p></div>
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">IRR پیش‌بینی</h3><p id="kpi_irr" class="text-2xl font-bold text-green-600">۰٪</p></div>
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">TVPI (جمع)</h3><p id="kpi_tvpi" class="text-2xl font-bold text-green-600">۰x</p></div>
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">DPI (توزیع‌شده)</h3><p id="kpi_dpi" class="text-2xl font-bold text-teal-600">۰x</p></div>
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">RVPI (باقی‌مانده)</h3><p id="kpi_rvpi" class="text-2xl font-bold text-amber-600">۰x</p></div>
+                        <div class="summary-card bg-white p-4 rounded-lg shadow border text-center"><h3 class="font-semibold text-gray-500">NAV پایانی</h3><p id="current_nav" class="text-2xl font-bold text-indigo-600">۰</p></div>
+                    </div>
+                </section>
+                
+                <!-- Tabs Section -->
+                <div class="mt-8 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <div class="border-b border-gray-200 no-print">
+                        <nav class="flex space-x-4 space-x-reverse" aria-label="Tabs">
+                            <button onclick="changeTab(event, 'charts')" class="tab-button active font-semibold px-4 py-2 rounded-t-lg">نمودارها</button>
+                            <button onclick="changeTab(event, 'portfolio')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">پرتفوی سرمایه‌گذاری</button>
+                            <button onclick="changeTab(event, 'financials')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">صورت‌های مالی</button>
+                             <button onclick="changeTab(event, 'goal_seek')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">مدلسازی هدفمند</button>
+                             <button onclick="changeTab(event, 'explanation')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">توضیحات مدل</button>
+                            <button onclick="changeTab(event, 'org_structure')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">ساختار سازمانی</button>
+                            <button onclick="changeTab(event, 'montecarlo')" class="tab-button font-semibold px-4 py-2 rounded-t-lg">شبیه‌سازی</button>
+                        </nav>
+                    </div>
+
+                    <div id="charts" class="tab-content active mt-6 printable-section"><h3 class="font-bold mb-4">نمودار J-Curve (تلفیقی به ریال)</h3><canvas id="jCurveChart"></canvas><div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10"><div><h3 class="font-bold mb-4 text-center">تخصیص سرمایه‌گذاری (به ریال)</h3><canvas id="allocationChart"></canvas></div><div><h3 class="font-bold mb-4 text-center">تعهدات سرمایه‌گذاران</h3><canvas id="commitmentChart"></canvas></div></div></div>
+                    <div id="portfolio" class="tab-content mt-6"><div class="flex justify-between items-center mb-4"><h3 class="font-bold">جدول سرمایه‌گذاری‌ها</h3><div><button onclick="addInvestmentRow()" class="bg-blue-500 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-600">+</button><button onclick="exportPortfolioToCsv()" class="bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600 ml-2">CSV</button></div></div><div class="overflow-x-auto"><table class="min-w-full bg-white border"><thead class="bg-gray-100"><tr><th class="py-2 px-3 border-b text-right">صندوق مادر (FOF)</th><th class="py-2 px-3 border-b text-right">صندوق زیرمجموعه</th><th class="py-2 px-3 border-b text-right">تاریخ شروع</th><th class="py-2 px-3 border-b text-right">مبلغ کل</th><th class="py-2 px-3 border-b text-right">نوع</th><th class="py-2 px-3 border-b text-right">اقدام</th></tr></thead><tbody id="portfolio_table_body"></tbody></table></div></div>
+                    <div id="financials" class="tab-content mt-6"><h3 class="font-bold mb-4">تحلیل صورت‌های مالی</h3><div class="flex items-center space-x-4 space-x-reverse mb-4 bg-gray-100 p-3 rounded-lg flex-wrap gap-4"><div><label for="fs_entity_selector" class="block text-sm font-medium text-gray-700">گزارش برای:</label><select id="fs_entity_selector" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md"><option value="manager_co">ManagerCo</option><option value="investors">سرمایه‌گذاران</option><option value="fof">صندوق‌های مادر (FOF)</option><option value="funds">صندوق‌های زیرمجموعه</option></select></div><div id="fs_investor_selector_div" class="hidden"><label for="fs_investor_selector" class="block text-sm font-medium text-gray-700">انتخاب سرمایه‌گذار:</label><select id="fs_investor_selector" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md"></select></div><div id="fs_fof_selector_div" class="hidden"><label for="fs_fof_selector" class="block text-sm font-medium text-gray-700">انتخاب FOF:</label><select id="fs_fof_selector" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md"></select></div><div id="fs_fund_selector_div" class="hidden"><label for="fs_fund_selector" class="block text-sm font-medium text-gray-700">انتخاب صندوق:</label><select id="fs_fund_selector" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md"></select></div><div><label for="fs_year_selector" class="block text-sm font-medium text-gray-700">انتخاب سال:</label><select id="fs_year_selector" class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 rounded-md"></select></div></div><div id="fs_output" class="space-y-6"></div></div>
+                    
+                    <div id="goal_seek" class="tab-content mt-6">
+                        <h3 class="font-bold mb-4">مدلسازی بهینه (Multi-Objective Optimization)</h3>
+                        <p class="text-sm text-gray-600 mb-4">در این بخش، می‌توانید چندین هدف را با ضرایب اهمیت متفاوت تعریف کرده و قیود مورد نظر برای متغیرها را مشخص کنید تا مدل بهترین سناریوی مصالحه (Trade-off) را برای رسیدن به اهداف پیشنهاد دهد.</p>
+                        
+                        <div class="input-group">
+                            <h3 class="text-lg">۱. تعریف اهداف و اولویت‌ها</h3>
+                            <div id="goal_seek_objectives_container" class="space-y-3">
+                                <!-- Objective rows will be added here by JS -->
+                            </div>
+                            <button id="add_objective_button" class="mt-4 text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg"> + افزودن هدف جدید</button>
+                        </div>
+                        
+                        <div class="input-group">
+                            <h3 class="text-lg">۲. تعریف قیود متغیرها (اختیاری)</h3>
+                             <div id="goal_seek_constraints_container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                                <!-- Constraint rows will be added here by JS -->
+                             </div>
+                        </div>
+
+                        <button id="run_goal_seek_button" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-all mt-4">محاسبه سناریوی بهینه</button>
+
+                        <div id="goal_seek_results" class="mt-6 hidden">
+                             <div class="input-group">
+                                <h3 class="text-lg">۳. سناریوی پیشنهادی</h3>
+                                <p id="goal_seek_summary" class="mb-4 bg-indigo-50 p-3 rounded-md text-indigo-800"></p>
+                                <div id="goal_seek_details_table" class="overflow-x-auto"></div>
+                                <button id="apply_goal_seek_button" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition mt-4">اعمال این سناریو در پنل مفروضات</button>
+                             </div>
+                        </div>
+                    </div>
+
+                     <div id="explanation" class="tab-content mt-6 space-y-6 leading-relaxed">
+                        <h2 class="text-2xl font-bold border-b pb-2">توضیحات و منطق محاسباتی مدل</h2>
+
+                        <div class="input-group">
+                            <h3>۱. فلسفه اصلی: تفکیک صندوق از مدیر (Segregation of Concerns)</h3>
+                            <p>هسته مرکزی این شبیه‌ساز بر پایه یک اصل کلیدی در مدیریت صندوق‌های سرمایه‌گذاری بنا شده است: تفکیک کامل نهاد صندوق (FOF) از نهاد مدیر (ManagerCo).</p>
+                            <ul class="list-disc list-inside mt-2 space-y-1">
+                                <li><strong>جریان هزینه:</strong> هزینه‌های عملیاتی مانند حقوق، اجاره و سربار در `ManagerCo` شناسایی می‌شوند. صندوق (`FOF`) تنها یک هزینه مشخص به نام "کارمزد مدیریت" (Management Fee) به `ManagerCo` پرداخت می‌کند.</li>
+                                <li><strong>چرا این مهم است؟</strong> این ساختار باعث می‌شود:
+                                    <ul class="list-disc list-inside mt-1 ml-4">
+                                        <li><strong>منحنی J-Curve واقعی:</strong> صورت‌های مالی `FOF` با هزینه‌های عملیاتی سنگین در سال‌های اولیه مخدوش نمی‌شود و شکل واقعی J-Curve (خروج سرمایه در ابتدا و بازگشت آن در انتها) به درستی نمایان می‌شود.</li>
+                                        <li><strong>شفافیت برای حسابرس:</strong> حسابرس به وضوح می‌بیند که هزینه‌های پرسنلی در جای خود (`ManagerCo`) و هزینه‌های سرمایه‌گذاری در جای دیگر (`FOF`) ثبت شده‌اند.</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="input-group">
+                            <h3>۲. موتور محاسباتی: آبشار جریان نقدینگی سالانه (Annual Cash Flow Waterfall)</h3>
+                            <p>این بخش قلب تپنده شبیه‌ساز است و گردش پول را در هر سال مدیریت می‌کند. فرآیند به صورت گام به گام به شرح زیر است:</p>
+                            <ul class="list-disc list-inside mt-2 space-y-2">
+                                <li><strong>گام اول: پیش‌بینی تمام جریان‌های ورودی و خروجی بالقوه</strong>
+                                    <ul class="list-disc list-inside mt-1 ml-4">
+                                        <li><strong>خروجی‌ها (Outflows):</strong> مدل ابتدا تمام سرمایه‌گذاری‌های جدید (Calls to Funds) که باید در آن سال انجام شود را بر اساس مفروضات پرتفوی محاسبه می‌کند. این شامل تزریق اولیه به صندوق‌های VC و PE و همچنین سرمایه‌گذاری‌های ثانویه (Follow-on) می‌شود.</li>
+                                        <li><strong>ورودی‌ها (Inflows):</strong> سپس، تمام وجوهی که از محل خروج سرمایه‌گذاری‌های قبلی (Exits) در آن سال باید به صندوق بازگردد (Distributions from Funds) را محاسبه می‌کند. زمان خروج بر اساس "دوره نگهداری" برای PE و "اوج دوره خروج" برای VC تعیین می‌شود.</li>
+                                        <li><strong>کارمزد مدیریت:</strong> کارمزد مدیریت سالانه به عنوان یک خروجی قطعی محاسبه می‌شود.</li>
+                                    </ul>
+                                </li>
+                                <li><strong>گام دوم: محاسبه جریان نقدی خالص کل صندوق (Net Cash Flow)</strong>
+                                    <p>مدل تمام ورودی‌ها و خروجی‌های ریالی‌شده (با اعمال نرخ تبدیل ارز) را در سطح کل صندوق agregiert کرده و جریان خالص را محاسبه می‌کند: <br> <strong>جریان نقدی خالص = (کل ورودی‌ها از صندوق‌ها) - (کل خروجی‌ها به صندوق‌ها + کل کارمزد مدیریت)</strong></p>
+                                </li>
+                                <li><strong>گام سوم: تصمیم‌گیری برای فراخوان یا توزیع</strong>
+                                     <p>این منطق کلیدی، عملکرد واقعی صندوق را شبیه‌سازی می‌کند:</p>
+                                    <ul class="list-disc list-inside mt-1 ml-4">
+                                        <li><strong>اگر جریان نقدی خالص منفی باشد:</strong> یعنی صندوق با کسری نقدینگی مواجه است. مدل دقیقاً به اندازه این کسری، از سرمایه‌گذاران (LPs) سرمایه فراخوان (Capital Call) می‌کند. در این سال، هیچ توزیع سودی به LPs انجام نمی‌شود.</li>
+                                        <li><strong>اگر جریان نقدی خالص مثبت باشد:</strong> یعنی صندوق مازاد نقدینگی دارد. مدل کل این مازاد را به سرمایه‌گذاران (LPs) توزیع (Distribute) می‌کند. در این سال، هیچ فراخوان سرمایه‌ای وجود ندارد.</li>
+                                    </ul>
+                                     <p class="mt-2"><strong>نتیجه:</strong> با این منطق، مانده نقدینگی صندوق در پایان هر سال صفر می‌شود و هر ریال ورودی یا به سرمایه‌گذاری جدید تخصیص یافته یا به سرمایه‌گذار بازگردانده شده است.</p>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="input-group">
+                            <h3>۳. محاسبه شاخص‌های کلیدی عملکرد (KPIs)</h3>
+                             <ul class="list-disc list-inside mt-2 space-y-1">
+                                <li><strong>DPI (Distributed to Paid-in Capital):</strong> نسبت `(مجموع وجوه توزیع‌شده به LPs)` به `(مجموع سرمایه فراخوان‌شده از LPs)`. این شاخص نشان می‌دهد سرمایه‌گذاران چه کسری از سرمایه خود را پس گرفته‌اند.</li>
+                                <li><strong>RVPI (Residual Value to Paid-in Capital):</strong> نسبت `(خالص ارزش دارایی‌های باقی‌مانده یا NAV)` به `(مجموع سرمایه فراخوان‌شده از LPs)`. این شاخص ارزش پرتفوی باقی‌مانده را نشان می‌دهد.</li>
+                                <li><strong>TVPI (Total Value to Paid-in Capital):</strong> حاصل جمع `DPI + RVPI`. این شاخص کل ارزش تولید شده (توزیع‌شده + باقی‌مانده) را نشان می‌دهد.</li>
+                                <li><strong>NAV (Net Asset Value):</strong> `NAV سال قبل + (سرمایه‌گذاری‌های جدید آن سال) - (بازگشت سرمایه از محل خروج‌های آن سال)`. این مقدار به صورت تجمعی محاسبه می‌شود.</li>
+                                <li><strong>NPV (Net Present Value):</strong> ارزش فعلی خالص جریان‌های نقدی سرمایه‌گذار با استفاده از "نرخ تنزیل" مشخص‌شده محاسبه می‌شود. مقدار مثبت نشان‌دهنده ارزش‌آفرینی بالاتر از نرخ معیار است.</li>
+                                <li><strong>نقطه سر به سر (Breakeven Year):</strong> اولین سالی که در آن مجموع وجوه توزیع‌شده به LPs از مجموع سرمایه فراخوان‌شده بیشتر یا مساوی می‌شود.</li>
+                                <li><strong>IRR (Internal Rate of Return):</strong> این نرخ بر اساس سری زمانی جریان‌های نقدی خالص از دید سرمایه‌گذار محاسبه می‌شود: `(جریان ورودی به LP یا Distribution) - (جریان خروجی از LP یا Contribution)`. ارزش NAV نهایی نیز به عنوان یک جریان ورودی در سال آخر در نظر گرفته می‌شود.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="input-group">
+                             <h3>۴. مدلسازی هدفمند: موتور بهینه‌سازی چندهدفه</h3>
+                             <ul class="list-disc list-inside mt-2 space-y-1">
+                                <li><strong>هدف:</strong> به جای آزمون و خطای دستی، این ابزار به شما کمک می‌کند تا بهترین ترکیب از متغیرها را برای رسیدن به چند هدف به صورت همزمان پیدا کنید.</li>
+                                <li><strong>الگوریتم:</strong> مدل از یک روش <strong>جستجوی تصادفی هوشمند</strong> استفاده می‌کند. این الگوریتم هزاران (مثلاً ۲۰۰۰) سناریوی مختلف را با ایجاد ترکیب‌های تصادفی از تمام متغیرهای کلیدی (بازدهی VC، نرخ شکست، بازدهی PE، تعداد شرکت‌ها، درصد تخصیص به VC و...) شبیه‌سازی می‌کند.</li>
+                                 <li><strong>امتیازدهی چندهدفه:</strong> برای هر سناریو، یک "امتیاز کلی" محاسبه می‌شود. این امتیاز بر اساس مجموع فاصله نسبی نتایج از **تمام اهداف تعریف‌شده شما** و با در نظر گرفتن **ضریب اهمیت** هر هدف به دست می‌آید.</li>
+                                <li><strong>نتیجه:</strong> پس از اتمام شبیه‌سازی‌ها، الگوریتم سناریویی را که **کمترین امتیاز خطا (بهترین امتیاز کلی)** را کسب کرده، به عنوان "سناریوی بهینه" انتخاب و پارامترهای آن را به شما پیشنهاد می‌دهد. این فرآیند به شما یک "نسخه" عملی برای رسیدن به اهداف استراتژیک‌تان ارائه می‌دهد.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+
+                    <div id="org_structure" class="tab-content mt-6"><div class="flex justify-between items-center mb-4"><h3 class="font-bold">چارت ارتباطات و جریان‌های نقدی</h3><div><label for="org_year_selector" class="text-sm font-medium text-gray-700">سال:</label><select id="org_year_selector" class="w-32 mt-1 pl-3 pr-10 py-2 border-gray-300 rounded-md"></select></div></div><div id="org_chart_container" class="p-4 bg-gray-50 rounded-lg overflow-x-auto"></div></div>
+                    <div id="montecarlo" class="tab-content mt-6 printable-section"><h3 class="font-bold mb-4">نتایج شبیه‌سازی مونت کارلو (تلفیقی به ریال)</h3><button id="run_mc_button" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition mb-4">اجرای شبیه‌سازی</button><progress id="mc_progress" value="0" max="100" class="w-full hidden"></progress><p id="mc_status" class="text-sm text-gray-600"></p><canvas id="mcChart" class="mt-4"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full modal-content">
+            <h2 class="text-2xl font-bold mb-4">راهنمای استفاده از شبیه‌ساز</h2>
+            <p class="mb-2">این ابزار یک مدل مالی Fund of Funds را به صورت تعاملی شبیه‌سازی می‌کند.</p>
+            <ul class="list-disc list-inside space-y-2 mb-4">
+                <li><strong>پنل مفروضات:</strong> تمام داده‌های ورودی مدل در این پنل یکپارچه شده است. شما می‌توانید FOF های جدید با واحدهای پولی مختلف (ریال/دلار) تعریف کنید.</li>
+                <li><strong>پرتفوی سرمایه‌گذاری:</strong> هر سرمایه‌گذاری را به یک FOF مادر و یک صندوق زیرمجموعه تخصیص دهید.</li>
+            </ul>
+            <button onclick="hideHelpModal()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">بستن</button>
+        </div>
+    </div>
+
+<script>
+// --- GLOBAL STATE ---
+let jCurveChartInstance, allocationChartInstance, commitmentChartInstance, mcChartInstance;
+let investors = [{ name: 'Foundation 1', commitment: 3000 },{ name: 'Foundation 2', commitment: 500 },{ name: 'Foundation 3', commitment: 500 }];
+let generalInputs = { 
+    discountRate: 12, 
+    mcRuns: 1000, 
+    fxRate: 50000,
+    managementFeeRatePre: 2.0,
+    managementFeeRatePost: 1.0,
+    managementFeeYearThreshold: 5,
+    vcDeploymentY1: 70,
+    vcDeploymentY2: 30,
+    followOnRate: 30,
+    randomSeed: 42,
+    logNormalMu: 1.1,
+    logNormalSigma: 0.8
+};
+let managerCoInputs = {
+    monthlySalary: 50,
+    employeeCount: 8,
+    overheadRate: 20,
+    rentYear1: 10
+};
+let fofs = [{ name: 'FOF 1 - Rial', currency: 'IRR' },{ name: 'FOF 2 - USD', currency: 'USD' }];
+let funds = [
+    { name: 'VC Fund A', type: 'VC', returnMultiple: 3.5, failureRate: 50, numCompanies: 20, avgInvestmentPerCo: 6, exitTimingMin: 4, exitTimingPeak: 6, exitTimingMax: 10 },
+    { name: 'PE Fund B', type: 'PE', returnMultiple: 2.2, failureRate: 0, avgHoldingPeriod: 5 },
+    { name: 'VC Fund C', type: 'VC', returnMultiple: 4, failureRate: 60, numCompanies: 15, avgInvestmentPerCo: 5.33, exitTimingMin: 5, exitTimingPeak: 7, exitTimingMax: 11 }
+];
+let portfolioData = [
+    { fof: 'FOF 1 - Rial', fund: 'VC Fund A', date: '2025-06-01' },
+    { fof: 'FOF 1 - Rial', fund: 'PE Fund B', date: '2025-09-01', amount: 500 },
+    { fof: 'FOF 2 - USD', fund: 'VC Fund C', date: '2026-08-01' }
+];
+let yearlyFinancials = {};
+let goalSeekSuggestion = null;
+
+// --- INITIALIZATION ---
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('update_button').addEventListener('click', runFullSimulation);
+    document.getElementById('run_mc_button').addEventListener('click', runMonteCarlo);
+    document.getElementById('run_goal_seek_button').addEventListener('click', runGoalSeek);
+    document.getElementById('add_objective_button').addEventListener('click', () => addGoalSeekObjectiveRow());
+
+    ['fs_entity_selector', 'fs_fof_selector', 'fs_fund_selector', 'fs_investor_selector', 'fs_year_selector'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updateFinancialStatementsView);
+    });
+    document.getElementById('org_year_selector').addEventListener('change', renderOrgChart);
+    
+    renderAssumptionsPanel();
+    renderPortfolioTable();
+    initializeGoalSeekUI();
+    runFullSimulation(); 
+});
+
+// --- UI & TABS ---
+function changeTab(event, tabId) {
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+    if (tabId === 'org_structure') setTimeout(drawOrgChartConnections, 100);
+}
+function showHelpModal() { document.getElementById('help-modal').classList.remove('hidden'); }
+function hideHelpModal() { document.getElementById('help-modal').classList.add('hidden'); }
+
+// --- ASSUMPTIONS PANEL ---
+function renderAssumptionsPanel() {
+    const panel = document.getElementById('assumptions_panel');
+    const lpSection = `<div class="input-group"><h3>سرمایه‌گذاران (LPs)</h3><div id="investors_list" class="space-y-3">${investors.map((inv, i) => renderInvestorCard(inv, i)).join('')}</div></div>`;
+    const fofSection = `<div class="input-group"><h3>صندوق‌های مادر (FOFs)</h3><div id="fof_list" class="space-y-3 mb-4">${fofs.map((fof, i) => renderFofCard(fof, i)).join('')}</div><div class="p-3 border-t"><p class="text-sm font-semibold mb-2">افزودن FOF جدید</p><div class="grid grid-cols-2 gap-2"><input type="text" id="new_fof_name" placeholder="نام FOF" class="p-2 border rounded-md"><select id="new_fof_currency" class="p-2 border rounded-md bg-white"><option value="IRR">ریالی</option><option value="USD">دلاری</option></select><button onclick="addFof()" class="col-span-2 bg-gray-600 text-white text-sm py-2 rounded-md hover:bg-gray-700">افزودن</button></div></div></div>`;
+    
+    const managerCoSection = `<div class="input-group">
+        <h3>هزینه‌ها و کارمزد مدیریت</h3>
+        <div class="space-y-2 text-sm">
+            <h4 class="font-semibold text-gray-700 mt-2">کارمزد مدیریت</h4>
+            <div class="grid grid-cols-3 gap-2">
+                <div><label class="text-gray-500">نرخ اولیه (%)</label><input type="number" step="0.1" value="${generalInputs.managementFeeRatePre}" class="w-full p-1 border rounded" onchange="updateGeneralInput('managementFeeRatePre', this.value)"></div>
+                <div><label class="text-gray-500">سال تفکیک</label><input type="number" value="${generalInputs.managementFeeYearThreshold}" class="w-full p-1 border rounded" onchange="updateGeneralInput('managementFeeYearThreshold', this.value)"></div>
+                <div><label class="text-gray-500">نرخ ثانویه (%)</label><input type="number" step="0.1" value="${generalInputs.managementFeeRatePost}" class="w-full p-1 border rounded" onchange="updateGeneralInput('managementFeeRatePost', this.value)"></div>
+            </div>
+            <h4 class="font-semibold text-gray-700 mt-3 border-t pt-2">هزینه‌های ManagerCo</h4>
+             <div class="grid grid-cols-2 gap-2">
+                <div><label class="text-gray-500">حقوق ماهانه (میلیون)</label><input type="number" value="${managerCoInputs.monthlySalary}" class="w-full p-1 border rounded" onchange="updateManagerCoInput('monthlySalary', this.value)"></div>
+                <div><label class="text-gray-500">تعداد پرسنل</label><input type="number" value="${managerCoInputs.employeeCount}" class="w-full p-1 border rounded" onchange="updateManagerCoInput('employeeCount', this.value)"></div>
+                <div><label class="text-gray-500">سربار حقوق (%)</label><input type="number" value="${managerCoInputs.overheadRate}" class="w-full p-1 border rounded" onchange="updateManagerCoInput('overheadRate', this.value)"></div>
+                <div><label class="text-gray-500">اجاره سال اول (میلیارد)</label><input type="number" value="${managerCoInputs.rentYear1}" class="w-full p-1 border rounded" onchange="updateManagerCoInput('rentYear1', this.value)"></div>
+            </div>
+        </div>
+    </div>`;
+    
+    const fundsSection = `<div class="input-group"><h3>صندوق‌های زیرمجموعه</h3>
+        <h4 class="font-semibold text-gray-700 mb-2 text-sm">زمانبندی سرمایه‌گذاری VC</h4>
+        <div class="grid grid-cols-3 gap-2 text-sm mb-4">
+             <div><label class="text-gray-500">تزریق سال اول (%)</label><input type="number" value="${generalInputs.vcDeploymentY1}" class="w-full p-1 border rounded" onchange="updateGeneralInput('vcDeploymentY1', this.value)"></div>
+             <div><label class="text-gray-500">تزریق سال دوم (%)</label><input type="number" value="${generalInputs.vcDeploymentY2}" class="w-full p-1 border rounded" onchange="updateGeneralInput('vcDeploymentY2', this.value)"></div>
+             <div><label class="text-gray-500">نرخ Follow-on (%)</label><input type="number" value="${generalInputs.followOnRate}" class="w-full p-1 border rounded" onchange="updateGeneralInput('followOnRate', this.value)"></div>
+        </div>
+        <div id="fund_assumptions_list" class="space-y-3 mb-4 border-t pt-4">${funds.map((fund, index) => renderFundCard(fund, index)).join('')}</div>
+        <div class="p-3 border-t"><p class="text-sm font-semibold mb-2">افزودن صندوق</p><div class="grid grid-cols-2 gap-2"><input type="text" id="new_fund_name" placeholder="نام صندوق" class="p-2 border rounded-md"><select id="new_fund_type" class="p-2 border rounded-md bg-white"><option value="VC">VC</option><option value="PE">PE</option></select><button onclick="addFund()" class="col-span-2 bg-gray-600 text-white text-sm py-2 rounded-md hover:bg-gray-700">افزودن</button></div></div>
+    </div>`;
+    const analysisSection = `<div class="input-group"><h3>پارامترهای عمومی و شبیه‌سازی</h3>
+        <div class="space-y-2 text-sm">
+            <h4 class="font-semibold text-gray-700 mt-2">پارامترهای عمومی</h4>
+            <div class="grid grid-cols-2 gap-2">
+                <div><label class="text-gray-600">نرخ تبدیل دلار</label><input type="number" value="${generalInputs.fxRate}" class="w-full p-1 border rounded" onchange="updateGeneralInput('fxRate', this.value)"></div>
+                <div><label class="text-gray-600">نرخ تنزیل (%)</label><input type="number" value="${generalInputs.discountRate}" class="w-full p-1 border rounded" onchange="updateGeneralInput('discountRate', this.value)"></div>
+            </div>
+            <h4 class="font-semibold text-gray-700 mt-3 border-t pt-2">پارامترهای شبیه‌سازی مونت کارلو</h4>
+            <div class="grid grid-cols-3 gap-2">
+                <div><label class="text-gray-500">هسته تصادفی</label><input type="number" value="${generalInputs.randomSeed}" class="w-full p-1 border rounded" onchange="updateGeneralInput('randomSeed', this.value)"></div>
+                <div><label class="text-gray-500">تعداد اجرا</label><input type="number" value="${generalInputs.mcRuns}" class="w-full p-1 border rounded" onchange="updateGeneralInput('mcRuns', this.value)"></div>
+                <div></div>
+                <div><label class="text-gray-500">Lognormal μ</label><input type="number" step="0.1" value="${generalInputs.logNormalMu}" class="w-full p-1 border rounded" onchange="updateGeneralInput('logNormalMu', this.value)"></div>
+                <div><label class="text-gray-500">Lognormal σ</label><input type="number" step="0.1" value="${generalInputs.logNormalSigma}" class="w-full p-1 border rounded" onchange="updateGeneralInput('logNormalSigma', this.value)"></div>
+            </div>
+        </div>
+    </div>`;
+    panel.innerHTML = lpSection + fofSection + managerCoSection + fundsSection + analysisSection;
+}
+function renderInvestorCard(investor, index) { return `<div class="p-3 rounded-md data-card"><div class="flex justify-between items-center"><input type="text" value="${investor.name}" class="font-bold p-1 border-b-2 border-transparent focus:border-blue-500 bg-transparent" onchange="updateInvestorDetails(${index}, 'name', this.value)"></div><div class="text-sm mt-2"><label class="text-gray-500">تعهد (میلیارد ریال)</label><input type="number" value="${investor.commitment}" class="w-full p-1 border rounded" onchange="updateInvestorDetails(${index}, 'commitment', this.value)"></div></div>`; }
+function renderFofCard(fof, index) { return `<div class="p-3 rounded-md data-card fof ${fof.currency}"><div class="flex justify-between items-center"><input type="text" value="${fof.name}" class="font-bold p-1 border-b-2 border-transparent focus:border-blue-500 bg-transparent" onchange="updateFofDetails(${index}, 'name', this.value)"><button onclick="deleteFof(${index})" class="text-red-500 hover:text-red-700 text-sm">حذف</button></div><div class="text-sm mt-2"><label class="text-gray-500">واحد پول</label><p class="font-semibold">${fof.currency === 'IRR' ? 'ریالی' : 'دلاری'}</p></div></div>`; }
+function renderFundCard(fund, index) {
+    const isVC = fund.type === 'VC';
+    const vcFields = `<div class="grid grid-cols-3 gap-2 text-sm mt-3 pt-3 border-t">
+        <div><label class="text-gray-500">شرکت‌ها</label><input type="number" value="${fund.numCompanies}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'numCompanies', this.value)"></div>
+        <div><label class="text-gray-500">میانگین سرمایه (واحد)</label><input type="number" step="0.1" value="${fund.avgInvestmentPerCo}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'avgInvestmentPerCo', this.value)"></div>
+        <div></div>
+        <div><label class="text-gray-500">خروج (حداقل)</label><input type="number" value="${fund.exitTimingMin}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'exitTimingMin', this.value)"></div>
+        <div><label class="text-gray-500">خروج (اوج)</label><input type="number" value="${fund.exitTimingPeak}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'exitTimingPeak', this.value)"></div>
+        <div><label class="text-gray-500">خروج (حداکثر)</label><input type="number" value="${fund.exitTimingMax}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'exitTimingMax', this.value)"></div>
+    </div>`;
+    const peFields = `<div class="grid grid-cols-3 gap-2 text-sm mt-3 pt-3 border-t">
+        <div><label class="text-gray-500">دوره نگهداری (سال)</label><input type="number" value="${fund.avgHoldingPeriod}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'avgHoldingPeriod', this.value)"></div>
+    </div>`
+    return `<div class="p-3 rounded-md data-card ${fund.type.toLowerCase()}"><div class="flex justify-between items-center mb-2"><input type="text" value="${fund.name}" class="font-bold p-1 border-b-2 border-transparent focus:border-blue-500 bg-transparent" onchange="updateFundDetails(${index}, 'name', this.value)"><button onclick="deleteFund(${index})" class="text-red-500 hover:text-red-700 text-sm">حذف</button></div><div class="grid grid-cols-3 gap-2 text-sm"><div><label class="text-gray-500">نوع</label><p class="font-semibold">${fund.type}</p></div><div><label class="text-gray-500">بازدهی (x)</label><input type="number" step="0.1" value="${fund.returnMultiple}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'returnMultiple', this.value)"></div><div><label class="text-gray-500">شکست (%)</label><input type="number" value="${fund.failureRate}" class="w-full p-1 border rounded" onchange="updateFundDetails(${index}, 'failureRate', this.value)" ${!isVC ? 'disabled' : ''}></div></div>${isVC ? vcFields : peFields}</div>`;
+}
+function updateGeneralInput(key, value) { generalInputs[key] = parseFloat(value); }
+function updateManagerCoInput(key, value) { managerCoInputs[key] = parseFloat(value); }
+function updateInvestorDetails(index, key, value) {
+    const oldName = investors[index].name;
+    if (key === 'name') {
+        const newName = value.trim();
+        if (!newName || investors.some((inv, i) => i !== index && inv.name.toLowerCase() === newName.toLowerCase())) { alert(newName ? 'سرمایه‌گذار دیگری با این نام وجود دارد.' : 'نام سرمایه‌گذار نمی‌تواند خالی باشد.'); renderAssumptionsPanel(); return; }
+        investors[index].name = newName;
+    } else { investors[index].commitment = parseFloat(value); }
+    populateSelectors();
+}
+function addFof() {
+    const name = document.getElementById('new_fof_name').value.trim();
+    const currency = document.getElementById('new_fof_currency').value;
+    if (!name || fofs.some(f => f.name.toLowerCase() === name.toLowerCase())) { alert(name ? 'FOF دیگری با این نام وجود دارد.' : 'لطفا نام FOF را وارد کنید.'); return; }
+    fofs.push({ name, currency });
+    renderAssumptionsPanel(); renderPortfolioTable(); populateSelectors();
+}
+function updateFofDetails(index, key, value) {
+    const oldName = fofs[index].name;
+    const newName = value.trim();
+    if (!newName || fofs.some((f, i) => i !== index && f.name.toLowerCase() === newName.toLowerCase())) { alert(newName ? 'FOF دیگری با این نام وجود دارد.' : 'نام FOF نمی‌تواند خالی باشد.'); renderAssumptionsPanel(); return; }
+    fofs[index].name = newName;
+    portfolioData.forEach(inv => { if (inv.fof === oldName) inv.fof = newName; });
+    renderPortfolioTable(); populateSelectors();
+}
+function deleteFof(index) {
+    if (portfolioData.some(p => p.fof === fofs[index].name)) { alert('این FOF دارای سرمایه‌گذاری است و قابل حذف نیست.'); return; }
+    fofs.splice(index, 1);
+    renderAssumptionsPanel(); renderPortfolioTable(); populateSelectors();
+}
+function addFund() {
+    const name = document.getElementById('new_fund_name').value.trim();
+    const type = document.getElementById('new_fund_type').value;
+    if (!name || funds.some(f => f.name.toLowerCase() === name.toLowerCase())) { alert(name ? 'صندوقی با این نام وجود دارد.' : 'لطفا نام صندوق را وارد کنید.'); return; }
+    const newFund = (type === 'VC') 
+        ? { name, type, returnMultiple: 3, failureRate: 50, numCompanies: 10, avgInvestmentPerCo: 5, exitTimingMin: 4, exitTimingPeak: 7, exitTimingMax: 10 } 
+        : { name, type, returnMultiple: 2.2, failureRate: 0, avgHoldingPeriod: 5 };
+    funds.push(newFund);
+    renderAssumptionsPanel(); renderPortfolioTable(); populateSelectors();
+}
+function updateFundDetails(index, key, value) {
+    const oldName = funds[index].name;
+    if (key === 'name') {
+        const newName = value.trim();
+        if (!newName || funds.some((f, i) => i !== index && f.name.toLowerCase() === newName.toLowerCase())) { alert(newName ? 'صندوق دیگری با این نام وجود دارد.' : 'نام صندوق نمی‌تواند خالی باشد.'); renderAssumptionsPanel(); return; }
+        funds[index].name = newName;
+        portfolioData.forEach(inv => { if (inv.fund === oldName) inv.fund = newName; });
+        renderPortfolioTable(); populateSelectors();
+    } else { funds[index][key] = parseFloat(value); }
+    if (funds[index].type === 'VC' && ['numCompanies', 'avgInvestmentPerCo'].includes(key)) renderPortfolioTable();
+}
+function deleteFund(index) {
+    if (portfolioData.some(p => p.fund === funds[index].name)) { alert('این صندوق دارای سرمایه‌گذاری است و قابل حذف نیست.'); return; }
+    funds.splice(index, 1);
+    renderAssumptionsPanel(); renderPortfolioTable(); populateSelectors();
+}
+function renderPortfolioTable() {
+    const tableBody = document.getElementById('portfolio_table_body');
+    tableBody.innerHTML = '';
+    portfolioData.forEach((item, index) => {
+        const fof = fofs.find(f => f.name === item.fof);
+        const fund = funds.find(f => f.name === item.fund);
+        const fofSelect = `<select class="w-full p-1 border rounded bg-white" onchange="updatePortfolioData(${index}, 'fof', this.value)">${fofs.map(f => `<option value="${f.name}" ${item.fof === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}</select>`;
+        const fundSelect = `<select class="w-full p-1 border rounded bg-white" onchange="updatePortfolioData(${index}, 'fund', this.value)">${funds.map(f => `<option value="${f.name}" ${item.fund === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}</select>`;
+        let amountInput;
+        const currencySymbol = fof?.currency === 'USD' ? '$' : 'IRR';
+        const amountUnit = fof?.currency === 'USD' ? 'میلیون' : 'میلیارد';
+        if (fund && fund.type === 'VC') {
+            const calculatedAmount = fund.numCompanies * fund.avgInvestmentPerCo;
+            amountInput = `<input type="text" value="${calculatedAmount.toFixed(2)} ${amountUnit} ${currencySymbol}" class="w-full p-1 border rounded" readonly>`;
+        } else {
+            amountInput = `<div class="relative"><input type="number" value="${item.amount || ''}" class="w-full p-1 border rounded pr-20" onchange="updatePortfolioData(${index}, 'amount', this.value)"><span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">${amountUnit} ${currencySymbol}</span></div>`;
+        }
+        const row = `<tr><td class="py-2 px-3 border-b">${fofSelect}</td><td class="py-2 px-3 border-b">${fundSelect}</td><td class="py-2 px-3 border-b"><input type="date" value="${item.date}" class="w-full p-1 border rounded" onchange="updatePortfolioData(${index}, 'date', this.value)"></td><td class="py-2 px-3 border-b">${amountInput}</td><td class="py-2 px-3 border-b text-center">${fund?.type || 'N/A'}</td><td class="py-2 px-3 border-b text-center"><button onclick="removeInvestmentRow(${index})" class="text-red-500 hover:text-red-700">حذف</button></td></tr>`;
+        tableBody.innerHTML += row;
+    });
+}
+function updatePortfolioData(index, key, value) {
+    if (key === 'amount') portfolioData[index].amount = parseFloat(value);
+    else portfolioData[index][key] = value;
+    renderPortfolioTable();
+}
+function addInvestmentRow() {
+    if (fofs.length === 0 || funds.length === 0) { alert("لطفا ابتدا یک FOF و یک صندوق زیرمجموعه در پنل مفروضات ایجاد کنید."); return; }
+    const firstFund = funds[0];
+    const newInvestment = { fof: fofs[0].name, fund: firstFund.name, date: new Date().toISOString().split('T')[0] };
+    if (firstFund.type === 'PE') {
+        const fof = fofs.find(f => f.name === newInvestment.fof);
+        newInvestment.amount = fof?.currency === 'USD' ? 10 : 100;
+    }
+    portfolioData.push(newInvestment);
+    renderPortfolioTable();
+}
+function removeInvestmentRow(index) { portfolioData.splice(index, 1); renderPortfolioTable(); }
+function exportPortfolioToCsv() {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "صندوق مادر (FOF),صندوق زیرمجموعه,تاریخ,مبلغ,واحد,نوع\n";
+    portfolioData.forEach(item => {
+        const fof = fofs.find(f => f.name === item.fof);
+        const fund = funds.find(f => f.name === item.fund);
+        const amount = fund?.type === 'VC' ? (fund.numCompanies * fund.avgInvestmentPerCo) : item.amount;
+        const currency = fof?.currency === 'USD' ? 'USD' : 'IRR';
+        const row = [item.fof, item.fund, item.date, amount, currency, fund?.type].join(',');
+        csvContent += row + "\r\n";
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "portfolio.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// --- CORE SIMULATION & HELPERS ---
+function mulberry32(a) {
+    return function() {
+      let t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+function sampleTri(a, c, b, rng) {
+    const u = rng();
+    const Fc = (c - a) / (b - a);
+    if (u < Fc) return a + Math.sqrt(u * (b - a) * (c - a));
+    return b - Math.sqrt((1 - u) * (b - a) * (b - c));
+}
+function sampleLognormal(mu, sigma, rng) {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    return Math.exp(mu + sigma * z);
+}
+
+function runFullSimulation() {
+    const kpis = calculateScenarioKPIs(funds, portfolioData, investors, generalInputs, managerCoInputs);
+    
+    animateValue(document.getElementById('total_commitment'), parseFloat(document.getElementById('total_commitment').textContent.replace(/[^0-9.-]+/g,"")) || 0, kpis.totalCommitment / 1e9, 1000, true);
+    if (kpis.totalCommitment === 0) { 
+        document.getElementById('kpi_irr').textContent = '۰٪';
+        document.getElementById('kpi_tvpi').textContent = '۰x';
+        document.getElementById('kpi_dpi').textContent = '۰x';
+        document.getElementById('kpi_rvpi').textContent = '۰x';
+        document.getElementById('current_nav').textContent = '۰';
+        renderJCurve([]);
+        renderAllocationChart();
+        renderCommitmentChart();
+        return; 
+    }
+    
+    animateValue(document.getElementById('kpi_irr'), parseFloat(document.getElementById('kpi_irr').textContent) || 0, kpis.irr * 100, 1000, false, '%');
+    animateValue(document.getElementById('kpi_tvpi'), parseFloat(document.getElementById('kpi_tvpi').textContent) || 0, kpis.tvpi, 1000, false, 'x');
+    animateValue(document.getElementById('kpi_dpi'), parseFloat(document.getElementById('kpi_dpi').textContent) || 0, kpis.dpi, 1000, false, 'x');
+    animateValue(document.getElementById('kpi_rvpi'), parseFloat(document.getElementById('kpi_rvpi').textContent) || 0, kpis.rvpi, 1000, false, 'x');
+    animateValue(document.getElementById('current_nav'), parseFloat(document.getElementById('current_nav').textContent.replace(/[^0-9.-]+/g,"")) || 0, kpis.finalNav / 1e9, 1000, true);
+
+
+    const fofNetCashflows = [];
+    Object.entries(yearlyFinancials).forEach(([year, yearData]) => {
+        let netCf = 0;
+        Object.values(yearData.investors).forEach(inv => {
+            netCf += inv.distributions - inv.contributions;
+        });
+        fofNetCashflows.push({ date: new Date(year, 6, 1), amount: netCf });
+    });
+    
+    renderJCurve(fofNetCashflows);
+    renderAllocationChart();
+    renderCommitmentChart();
+    populateSelectors();
+    updateFinancialStatementsView();
+    renderOrgChart();
+}
+
+function calculateScenarioKPIs(currentFunds, currentPortfolio, currentInvestors, currentGeneral, currentManagerCo) {
+    yearlyFinancials = {};
+    const localFofs = fofs; 
+
+    if (currentPortfolio.length === 0) return { totalCommitment: 0, tvpi: 0, irr: 0, breakevenYear: Infinity, nav: 0, npv: 0 };
+    
+    const startYear = new Date(Math.min(...currentPortfolio.map(item => new Date(item.date)))).getFullYear();
+    const endYear = startYear + 15;
+
+    const totalLpCommitment = currentInvestors.reduce((sum, inv) => sum + inv.commitment, 0);
+    if(totalLpCommitment === 0) return { totalCommitment: 0, tvpi: 0, irr: 0, breakevenYear: Infinity, nav: 0, npv: 0 };
+
+    // Pre-calculate all investment cash flows over their lifecycle
+    const yearlyInvestmentFlows = {};
+    for (let year = startYear; year <= endYear; year++) {
+        yearlyInvestmentFlows[year] = { calls: 0, dists: 0 };
+    }
+
+    currentPortfolio.forEach(inv => {
+        const fof = localFofs.find(f => f.name === inv.fof);
+        const fund = currentFunds.find(f => f.name === inv.fund);
+        if (!fof || !fund) return;
+        
+        const startInvYear = new Date(inv.date).getFullYear();
+        const multiplier = fof.currency === 'USD' ? 1e6 : 1e9;
+        const fx = fof.currency === 'USD' ? currentGeneral.fxRate : 1;
+
+        if (fund.type === 'VC') {
+            const totalInvestment = fund.numCompanies * fund.avgInvestmentPerCo;
+            const totalFollowOn = totalInvestment * (currentGeneral.followOnRate / 100);
+            if(yearlyInvestmentFlows[startInvYear]) yearlyInvestmentFlows[startInvYear].calls += totalInvestment * (currentGeneral.vcDeploymentY1 / 100) * multiplier * fx;
+            if(yearlyInvestmentFlows[startInvYear + 1]) yearlyInvestmentFlows[startInvYear + 1].calls += (totalInvestment * (currentGeneral.vcDeploymentY2 / 100) + totalFollowOn / 2) * multiplier * fx;
+            if(yearlyInvestmentFlows[startInvYear + 2]) yearlyInvestmentFlows[startInvYear + 2].calls += (totalFollowOn / 2) * multiplier * fx;
+            
+            const exitYear = startInvYear + Math.round(fund.exitTimingPeak || 7);
+            if (yearlyInvestmentFlows[exitYear]) {
+                let investmentAmountInUnits = totalInvestment * multiplier * fx;
+                let expectedReturnInUnits = fund.returnMultiple * investmentAmountInUnits * (1 - fund.failureRate / 100);
+                yearlyInvestmentFlows[exitYear].dists += expectedReturnInUnits;
+            }
+        } else { // PE
+            if(yearlyInvestmentFlows[startInvYear]) yearlyInvestmentFlows[startInvYear].calls += (inv.amount || 0) * multiplier * fx;
+            const exitYear = startInvYear + (fund.avgHoldingPeriod || 5);
+            if (yearlyInvestmentFlows[exitYear]) {
+                let expectedReturnInUnits = (inv.amount || 0) * multiplier * fx * fund.returnMultiple;
+                yearlyInvestmentFlows[exitYear].dists += expectedReturnInUnits;
+            }
+        }
+    });
+
+    let nav = 0;
+    for (let year = startYear; year <= endYear; year++) {
+        yearlyFinancials[year] = {
+            investors: {}, fofs: {}, funds: {}, managerCo: { feeIncome: 0, expenses: 0, ebit: 0 }
+        };
+        // Correctly initialize all sub-objects
+        currentInvestors.forEach(inv => yearlyFinancials[year].investors[inv.name] = { contributions: 0, distributions: 0 });
+        localFofs.forEach(fof => yearlyFinancials[year].fofs[fof.name] = { 
+            callsToFundsIRR: 0, distFromFundsIRR: 0, 
+            managementFee: 0, nav: (yearlyFinancials[year-1]?.fofs[fof.name]?.nav || 0)
+        });
+        
+        const investmentCalls = yearlyInvestmentFlows[year]?.calls || 0;
+        const investmentDists = yearlyInvestmentFlows[year]?.dists || 0;
+        
+        nav += investmentCalls - investmentDists;
+
+        const totalCommitmentIRR = currentInvestors.reduce((s,i) => s + i.commitment, 0) * 1e9;
+        const feeRate = (year - startYear < currentGeneral.managementFeeYearThreshold) ? currentGeneral.managementFeeRatePre : currentGeneral.managementFeeRatePost;
+        const totalMgmtFee = totalCommitmentIRR * (feeRate / 100);
+
+        const totalCashNeeded = investmentCalls + totalMgmtFee;
+        const netCashFlow = investmentDists - totalCashNeeded;
+        
+        let yearlyLpContributions = 0;
+        let yearlyLpDistributions = 0;
+        if (netCashFlow < 0) {
+            yearlyLpContributions = -netCashFlow;
+        } else {
+            yearlyLpDistributions = netCashFlow;
+        }
+
+        currentInvestors.forEach(inv => {
+            const lpShare = inv.commitment / totalLpCommitment;
+            yearlyFinancials[year].investors[inv.name].contributions = yearlyLpContributions * lpShare;
+            yearlyFinancials[year].investors[inv.name].distributions = yearlyLpDistributions * lpShare;
+        });
+
+        // For reporting only
+        yearlyFinancials[year].managerCo.feeIncome = totalMgmtFee;
+        localFofs.forEach(fof => {
+             // Distribute calls/dists proportionally for org chart visualization
+            yearlyFinancials[year].fofs[fof.name].callsToFundsIRR = investmentCalls / localFofs.length;
+            yearlyFinancials[year].fofs[fof.name].distFromFundsIRR = investmentDists / localFofs.length;
+        });
+    }
+    
+    // --- Final KPI Calculation ---
+    let cumulativeContributions = 0;
+    let cumulativeDistributions = 0;
+    let breakevenYear = Infinity;
+
+    Object.entries(yearlyFinancials).sort(([a],[b]) => a - b).forEach(([year, yearData]) => {
+        let yearlyContributions = 0;
+        let yearlyDistributions = 0;
+        Object.values(yearData.investors).forEach(invData => {
+            yearlyContributions += invData.contributions;
+            yearlyDistributions += invData.distributions;
+        });
+        
+        cumulativeContributions += yearlyContributions;
+        cumulativeDistributions += yearlyDistributions;
+
+        if (cumulativeDistributions >= cumulativeContributions && breakevenYear === Infinity) {
+            breakevenYear = parseInt(year) - startYear + 1;
+        }
+    });
+
+    const finalYear = Math.max(...Object.keys(yearlyFinancials).map(Number));
+    const finalNav = nav;
+
+    const dpi = cumulativeContributions > 0 ? cumulativeDistributions / cumulativeContributions : 0;
+    const rvpi = cumulativeContributions > 0 ? finalNav / cumulativeContributions : 0;
+    const tvpi = dpi + rvpi;
+
+    const lpCashflows = [];
+    for (const year in yearlyFinancials) {
+        let yearlyContribution = 0;
+        let yearlyDistribution = 0;
+        Object.values(yearlyFinancials[year].investors).forEach(invData => {
+            yearlyContribution += invData.contributions;
+            yearlyDistribution += invData.distributions;
+        });
+        if(yearlyContribution > 0 || yearlyDistribution > 0) {
+             lpCashflows.push({ date: new Date(year, 6, 1), amount: yearlyDistribution - yearlyContribution });
+        }
+    }
+    if(finalNav > 0) lpCashflows.push({ date: new Date(finalYear, 11, 31), amount: finalNav });
+    
+    const irr = calculateXIRR(lpCashflows);
+    const npv = calculateNPV(lpCashflows, currentGeneral.discountRate / 100);
+    
+    return {
+        totalCommitment: totalLpCommitment * 1e9,
+        irr, tvpi, dpi, rvpi, finalNav, breakevenYear, npv, nav: finalNav
+    };
+}
+
+
+async function runMonteCarlo() {
+    const mcButton = document.getElementById('run_mc_button');
+    const mcProgress = document.getElementById('mc_progress');
+    const mcStatus = document.getElementById('mc_status');
+    mcButton.disabled = true; mcProgress.classList.remove('hidden'); mcProgress.value = 0;
+    
+    const rng = mulberry32(generalInputs.randomSeed);
+
+    const vcInvestments = portfolioData.filter(p => funds.find(f => f.name === p.fund)?.type === 'VC');
+    if (vcInvestments.length === 0) { alert("هیچ سرمایه‌گذاری VC برای شبیه‌سازی وجود ندارد."); mcButton.disabled = false; mcProgress.classList.add('hidden'); return; }
+    let totalVCInvestedIRR = 0;
+    vcInvestments.forEach(inv => {
+        const fof = fofs.find(f => f.name === inv.fof);
+        const fund = funds.find(f => f.name === inv.fund);
+        if (fof && fund) {
+            const fx = fof.currency === 'USD' ? generalInputs.fxRate : 1;
+            const multiplier = fof.currency === 'USD' ? 1e6 : 1e9;
+            const totalInvestment = fund.numCompanies * fund.avgInvestmentPerCo * (1 + generalInputs.followOnRate / 100);
+            totalVCInvestedIRR += totalInvestment * multiplier * fx;
+        }
+    });
+    if (totalVCInvestedIRR === 0) { alert("مبلغ سرمایه‌گذاری VC برای شبیه‌سازی صفر است."); mcButton.disabled = false; mcProgress.classList.add('hidden'); return; }
+    
+    const tvpiResults = [];
+    for (let i = 0; i < generalInputs.mcRuns; i++) {
+        let totalRealizedValueIRR = 0;
+        vcInvestments.forEach(inv => {
+            const fof = fofs.find(f => f.name === inv.fof);
+            const fund = funds.find(f => f.name === inv.fund);
+            if (!fof || !fund) return;
+            const fx = fof.currency === 'USD' ? generalInputs.fxRate : 1;
+            const multiplier = fof.currency === 'USD' ? 1e6 : 1e9;
+            for (let c = 0; c < fund.numCompanies; c++) {
+                if (rng() > (fund.failureRate / 100)) {
+                    const multiple = sampleLognormal(generalInputs.logNormalMu, generalInputs.logNormalSigma, rng);
+                    totalRealizedValueIRR += fund.avgInvestmentPerCo * (1 + generalInputs.followOnRate / 100) * multiplier * multiple * fx;
+                }
+            }
+        });
+        tvpiResults.push(totalRealizedValueIRR / totalVCInvestedIRR);
+        if (i % 100 === 0) { await new Promise(r => setTimeout(r, 0)); mcProgress.value = (i / generalInputs.mcRuns) * 100; }
+    }
+    mcProgress.value = 100;
+    renderMcChart(tvpiResults);
+    tvpiResults.sort((a, b) => a - b);
+    const p10 = tvpiResults.length > 0 ? tvpiResults[Math.floor(generalInputs.mcRuns * 0.1)].toFixed(2) : 0;
+    const p50 = tvpiResults.length > 0 ? tvpiResults[Math.floor(generalInputs.mcRuns * 0.5)].toFixed(2) : 0;
+    const p90 = tvpiResults.length > 0 ? tvpiResults[Math.floor(generalInputs.mcRuns * 0.9)].toFixed(2) : 0;
+    mcStatus.textContent = `نتایج: میانه (P50): ${p50}x | دهک دهم (P10): ${p10}x | دهک نودم (P90): ${p90}x`;
+    mcButton.disabled = false;
+}
+function calculateXIRR(cashflows, guess = 0.1) {
+    if (cashflows.length < 2) return 0;
+    const values = cashflows.map(cf => cf.amount);
+    const dates = cashflows.map(cf => new Date(cf.date).getTime() / 86400000);
+    const minDate = Math.min(...dates);
+    let rate = guess;
+    for (let i = 0; i < 100; i++) {
+        let npv = 0, derivative = 0;
+        for (let j = 0; j < values.length; j++) {
+            const days = dates[j] - minDate;
+            npv += values[j] / Math.pow(1 + rate, days / 365);
+            derivative -= (days / 365) * values[j] / Math.pow(1 + rate, (days / 365) + 1);
+        }
+        if (Math.abs(npv) < 1e-7) return rate;
+        if (derivative === 0) return NaN;
+        rate -= npv / derivative;
+    }
+    return isNaN(rate) ? 0 : rate;
+}
+
+function calculateNPV(cashflows, discountRate) {
+    if (cashflows.length < 1) return 0;
+    const dates = cashflows.map(cf => new Date(cf.date).getTime() / 86400000);
+    const minDate = Math.min(...dates);
+    let npv = 0;
+    for (let i = 0; i < cashflows.length; i++) {
+        const days = dates[i] - minDate;
+        npv += cashflows[i].amount / Math.pow(1 + discountRate, days / 365);
+    }
+    return npv;
+}
+
+
+// --- Goal Seek Functions ---
+async function runGoalSeek() {
+    const button = document.getElementById('run_goal_seek_button');
+    button.disabled = true;
+    button.textContent = 'در حال محاسبه...';
+
+    // Allow UI to update before heavy computation
+    await new Promise(resolve => setTimeout(resolve, 10)); 
+
+    const objectives = getGoalSeekObjectives();
+    const constraints = getGoalSeekConstraints();
+
+    if(objectives.length === 0) {
+        alert("لطفا حداقل یک هدف تعریف کنید.");
+        button.disabled = false;
+        button.textContent = 'محاسبه سناریوی بهینه';
+        return;
+    }
+
+    let bestSolution = {
+        variables: null,
+        score: Infinity,
+        achievedKpis: null
+    };
+    const iterations = 2000;
+
+    for (let i = 0; i < iterations; i++) {
+        // Generate a random set of variables within the defined constraints
+        const currentVariables = {
+            vc_return_multiple: constraints.vc_return_multiple.min + Math.random() * (constraints.vc_return_multiple.max - constraints.vc_return_multiple.min),
+            vc_failure_rate: constraints.vc_failure_rate.min + Math.random() * (constraints.vc_failure_rate.max - constraints.vc_failure_rate.min),
+            pe_return_multiple: constraints.pe_return_multiple.min + Math.random() * (constraints.pe_return_multiple.max - constraints.pe_return_multiple.min),
+            vc_num_companies: Math.round(constraints.vc_num_companies.min + Math.random() * (constraints.vc_num_companies.max - constraints.vc_num_companies.min)),
+            allocation_to_vc_percent: constraints.allocation_to_vc_percent.min + Math.random() * (constraints.allocation_to_vc_percent.max - constraints.allocation_to_vc_percent.min),
+        };
+
+        // Create temporary models with these variables
+        let tempFunds = JSON.parse(JSON.stringify(funds));
+        let { tempPortfolio } = reallocatePortfolio(currentVariables.allocation_to_vc_percent / 100, tempFunds, portfolioData);
+        
+        tempFunds.forEach(f => {
+            if (f.type === 'VC') {
+                f.returnMultiple = currentVariables.vc_return_multiple;
+                f.failureRate = currentVariables.vc_failure_rate;
+                f.numCompanies = currentVariables.vc_num_companies;
+            } else if (f.type === 'PE') {
+                f.returnMultiple = currentVariables.pe_return_multiple;
+            }
+        });
+
+        const resultKpis = calculateScenarioKPIs(tempFunds, tempPortfolio, investors, generalInputs, managerCoInputs);
+        
+        let totalScore = 0;
+        objectives.forEach(obj => {
+            const resultValue = resultKpis[obj.kpi];
+            const targetValue = obj.kpi === 'irr' ? obj.target / 100 : obj.target;
+            const normalizedError = Math.abs(resultValue - targetValue) / (targetValue || 1);
+            totalScore += normalizedError * obj.weight;
+        });
+
+        if (totalScore < bestSolution.score) {
+            bestSolution.score = totalScore;
+            bestSolution.variables = currentVariables;
+            bestSolution.achievedKpis = resultKpis;
+        }
+    }
+    
+    displayGoalSeekResults(objectives, bestSolution);
+    button.disabled = false;
+    button.textContent = 'محاسبه سناریوی بهینه';
+}
+
+function reallocatePortfolio(vcTargetPercent, currentFunds, currentPortfolio) {
+    const tempPortfolio = JSON.parse(JSON.stringify(currentPortfolio));
+    const tempFunds = JSON.parse(JSON.stringify(currentFunds));
+    
+    let totalVcInvestment = 0;
+    let totalPeInvestment = 0;
+
+    tempPortfolio.forEach(inv => {
+        const fund = tempFunds.find(f => f.name === inv.fund);
+        const fof = fofs.find(f => f.name === inv.fof);
+        if (!fund || !fof) return;
+        const multiplier = fof.currency === 'USD' ? 1e6 : 1e9;
+        
+        if(fund.type === 'VC') {
+            totalVcInvestment += fund.numCompanies * fund.avgInvestmentPerCo * multiplier;
+        } else {
+            totalPeInvestment += (inv.amount || 0) * multiplier;
+        }
+    });
+
+    const totalInvestment = totalVcInvestment + totalPeInvestment;
+    if (totalInvestment === 0) return { tempFunds, tempPortfolio };
+
+    const newTotalVc = totalInvestment * vcTargetPercent;
+    const newTotalPe = totalInvestment * (1 - vcTargetPercent);
+
+    const vcScalingFactor = totalVcInvestment > 0 ? newTotalVc / totalVcInvestment : 1;
+    const peScalingFactor = totalPeInvestment > 0 ? newTotalPe / totalPeInvestment : 1;
+    
+    tempPortfolio.forEach(inv => {
+        const fund = tempFunds.find(f => f.name === inv.fund);
+        if (fund && fund.type === 'PE') {
+            inv.amount = (inv.amount || 0) * peScalingFactor;
+        }
+    });
+    tempFunds.forEach(fund => {
+         if (fund.type === 'VC') {
+            fund.avgInvestmentPerCo *= vcScalingFactor;
+        }
+    });
+    
+    return { tempFunds, tempPortfolio };
+}
+
+function displayGoalSeekResults(objectives, solution) {
+    const resultsDiv = document.getElementById('goal_seek_results');
+    const summaryP = document.getElementById('goal_seek_summary');
+    const detailsTableDiv = document.getElementById('goal_seek_details_table');
+
+    if (solution.variables && solution.score < 0.1) { // Added a score threshold
+        summaryP.innerHTML = `بهترین سناریوی مصالحه برای رسیدن به اهداف شما یافت شد:`;
+        
+        let achievedVsTargetHTML = `<h4 class="font-semibold mt-4 mb-2">مقایسه اهداف و نتایج</h4>
+        <table class="fs-table">
+            <thead><tr class="bg-gray-100"><td class="font-bold">شاخص</td><td class="font-bold">هدف</td><td class="font-bold">نتیجه حاصل‌شده</td></tr></thead>
+            <tbody>`;
+        objectives.forEach(obj => {
+            const kpiName = { 'tvpi': 'TVPI', 'irr': 'IRR', 'breakeven_year': 'نقطه سر به سر', 'nav': 'NAV پایانی', 'npv': 'NPV' }[obj.kpi];
+            const achievedValue = solution.achievedKpis[obj.kpi];
+            
+            let targetText, achievedText;
+
+            switch(obj.kpi) {
+                case 'irr':
+                    targetText = `${obj.target.toFixed(1)}%`;
+                    achievedText = `${(achievedValue * 100).toFixed(1)}%`;
+                    break;
+                case 'breakeven_year':
+                    targetText = `سال ${obj.target}`;
+                    achievedText = `سال ${achievedValue}`;
+                    break;
+                 case 'nav':
+                 case 'npv':
+                    targetText = `${(obj.target).toLocaleString()}B`;
+                    achievedText = `${(achievedValue / 1e9).toLocaleString('fa-IR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}B`;
+                    break;
+                default: // tvpi
+                    targetText = `${obj.target.toFixed(2)}x`;
+                    achievedText = `${achievedValue.toFixed(2)}x`;
+            }
+            achievedVsTargetHTML += `<tr><td>${kpiName}</td><td>${targetText}</td><td>${achievedText}</td></tr>`;
+        });
+        achievedVsTargetHTML += `</tbody></table>`;
+
+
+        let variablesHTML = `<h4 class="font-semibold mt-4 mb-2">مقادیر پیشنهادی متغیرها</h4>
+        <table class="fs-table"><tbody>
+            <tr><td class="font-semibold">میانگین بازدهی VC</td><td>${solution.variables.vc_return_multiple.toFixed(2)}x</td></tr>
+            <tr><td class="font-semibold">نرخ شکست VC</td><td>${solution.variables.vc_failure_rate.toFixed(1)}%</td></tr>
+            <tr><td class="font-semibold">میانگین بازدهی PE</td><td>${solution.variables.pe_return_multiple.toFixed(2)}x</td></tr>
+            <tr><td class="font-semibold">میانگین تعداد شرکت‌های VC</td><td>${Math.round(solution.variables.vc_num_companies)}</td></tr>
+            <tr><td class="font-semibold">درصد تخصیص به VC</td><td>${solution.variables.allocation_to_vc_percent.toFixed(1)}%</td></tr>
+        </tbody></table>`;
+
+        detailsTableDiv.innerHTML = achievedVsTargetHTML + variablesHTML;
+        
+        goalSeekSuggestion = solution.variables;
+        document.getElementById('apply_goal_seek_button').onclick = applyGoalSeekSuggestion;
+        document.getElementById('apply_goal_seek_button').style.display = 'block';
+    } else {
+        summaryP.innerHTML = `<strong>دستیابی به اهداف با قیود فعلی، غیرممکن یا بسیار دشوار است.</strong><br>نزدیک‌ترین سناریوی یافت‌شده نتایج زیر را به همراه داشت. پیشنهاد می‌شود قیود را بازتر کرده یا اهداف را تعدیل نمایید.`;
+        detailsTableDiv.innerHTML = '';
+        document.getElementById('apply_goal_seek_button').style.display = 'none';
+    }
+    resultsDiv.classList.remove('hidden');
+}
+
+function applyGoalSeekSuggestion() {
+    if (!goalSeekSuggestion) return;
+    
+    const { tempFunds, tempPortfolio } = reallocatePortfolio(goalSeekSuggestion.allocation_to_vc_percent / 100, funds, portfolioData);
+    
+    tempFunds.forEach(f => {
+        if (f.type === 'VC') {
+            f.returnMultiple = goalSeekSuggestion.vc_return_multiple;
+            f.failureRate = goalSeekSuggestion.vc_failure_rate;
+            f.numCompanies = Math.round(goalSeekSuggestion.vc_num_companies);
+        } else if (f.type === 'PE') {
+            f.returnMultiple = goalSeekSuggestion.pe_return_multiple;
+        }
+    });
+
+    funds = tempFunds;
+    portfolioData = tempPortfolio;
+    
+    goalSeekSuggestion = null;
+    document.getElementById('goal_seek_results').classList.add('hidden');
+    
+    renderPortfolioTable(); 
+    renderAssumptionsPanel();
+    runFullSimulation();
+    alert("سناریوی پیشنهادی با موفقیت در پنل مفروضات اعمال شد. نتایج به‌روزرسانی شدند.");
+}
+
+function initializeGoalSeekUI() {
+    addGoalSeekObjectiveRow('tvpi', 2.5, 10);
+    addGoalSeekObjectiveRow('breakeven_year', 7, 8);
+    renderGoalSeekConstraints();
+}
+
+function addGoalSeekObjectiveRow(kpi = 'tvpi', value = 2.5, weight = 10) {
+    const container = document.getElementById('goal_seek_objectives_container');
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-12 gap-2 items-center';
+    row.innerHTML = `
+        <div class="col-span-5">
+            <label class="sr-only">شاخص هدف</label>
+            <select class="w-full p-2 border-gray-300 rounded-md goal-kpi-selector">
+                <option value="tvpi">TVPI</option>
+                <option value="irr">IRR</option>
+                <option value="breakeven_year">نقطه سر به سر (سال)</option>
+                <option value="nav">NAV پایانی (میلیارد)</option>
+                <option value="npv">NPV (میلیارد)</option>
+            </select>
+        </div>
+        <div class="col-span-3">
+             <label class="sr-only">مقدار هدف</label>
+            <input type="number" value="${value}" step="0.1" class="w-full p-2 border-gray-300 rounded-md goal-kpi-value">
+        </div>
+        <div class="col-span-3">
+             <label class="sr-only">ضریب اهمیت</label>
+            <input type="number" value="${weight}" min="1" max="10" class="w-full p-2 border-gray-300 rounded-md goal-kpi-weight" title="ضریب اهمیت (۱ تا ۱۰)">
+        </div>
+        <div class="col-span-1 text-center">
+            <button class="text-red-500 hover:text-red-700 font-bold" onclick="this.parentElement.parentElement.remove()">X</button>
+        </div>
+    `;
+    const selector = row.querySelector('.goal-kpi-selector');
+    selector.value = kpi;
+    selector.addEventListener('change', (e) => updateGoalSeekValueLabel(e.target));
+    container.appendChild(row);
+    updateGoalSeekValueLabel(selector);
+}
+
+function getGoalSeekObjectives() {
+    const objectives = [];
+    const rows = document.querySelectorAll('#goal_seek_objectives_container > div');
+    rows.forEach(row => {
+        const kpi = row.querySelector('.goal-kpi-selector').value;
+        let target = parseFloat(row.querySelector('.goal-kpi-value').value);
+        const weight = parseInt(row.querySelector('.goal-kpi-weight').value) || 1;
+        if(kpi === 'nav' || kpi === 'npv') target *= 1e9; // Convert billions to actual value
+        if (!isNaN(target)) {
+            objectives.push({ kpi, target, weight });
+        }
+    });
+    return objectives;
+}
+
+
+function updateGoalSeekValueLabel(target) {
+    let selector, input;
+    if (target instanceof HTMLElement) {
+        selector = target;
+        input = target.parentElement.parentElement.querySelector('.goal-kpi-value');
+    } else { // Fallback for initial load
+        selector = document.querySelector('.goal-kpi-selector');
+        input = document.querySelector('.goal-kpi-value');
+    }
+
+    if (!selector || !input) return;
+
+    const kpi = selector.value;
+    if (kpi === 'breakeven_year') {
+        input.step = "1";
+        if (input.value > 15 || input.value < 1) input.value = "7";
+    } else if (kpi === 'irr'){
+        input.step = "1";
+        if (input.value > 100 || input.value < 1) input.value = "25";
+    } else if (kpi === 'nav' || kpi === 'npv'){
+        input.step = "100";
+        if (input.value < 0) input.value = "5000";
+    }
+    else { // TVPI
+        input.step = "0.1";
+         if (input.value > 20 || input.value < 0.1) input.value = "2.5";
+    }
+}
+
+function renderGoalSeekConstraints() {
+    const container = document.getElementById('goal_seek_constraints_container');
+    const constraints = [
+        { id: 'vc_return_multiple', label: 'میانگین بازدهی VC (x)', min: 1, max: 20 },
+        { id: 'vc_failure_rate', label: 'نرخ شکست VC (%)', min: 0, max: 100 },
+        { id: 'pe_return_multiple', label: 'میانگین بازدهی PE (x)', min: 1, max: 10 },
+        { id: 'vc_num_companies', label: 'تعداد شرکت‌های VC', min: 5, max: 100 },
+        { id: 'allocation_to_vc_percent', label: 'تخصیص به VC (%)', min: 0, max: 100 }
+    ];
+
+    container.innerHTML = constraints.map(c => `
+        <div class="grid grid-cols-5 gap-2 items-center">
+            <label for="constraint_${c.id}_min" class="col-span-2">${c.label}</label>
+            <input type="number" id="constraint_${c.id}_min" value="${c.min}" class="col-span-1 w-full p-1 border-gray-300 rounded-md" placeholder="حداقل">
+            <span class="text-center col-span-1">-</span>
+            <input type="number" id="constraint_${c.id}_max" value="${c.max}" class="col-span-1 w-full p-1 border-gray-300 rounded-md" placeholder="حداکثر">
+        </div>
+    `).join('');
+}
+function getGoalSeekConstraints() {
+    const constraints = {};
+    const constraintIds = ['vc_return_multiple', 'vc_failure_rate', 'pe_return_multiple', 'vc_num_companies', 'allocation_to_vc_percent'];
+    constraintIds.forEach(id => {
+        const min = parseFloat(document.getElementById(`constraint_${id}_min`).value);
+        const max = parseFloat(document.getElementById(`constraint_${id}_max`).value);
+        constraints[id] = { min: isNaN(min) ? 0 : min, max: isNaN(max) ? 100 : max };
+    });
+    return constraints;
+}
+
+function populateSelectors() {
+    const yearSelectors = ['fs_year_selector', 'org_year_selector'];
+    const fofSelector = document.getElementById('fs_fof_selector');
+    const fundSelector = document.getElementById('fs_fund_selector');
+    const investorSelector = document.getElementById('fs_investor_selector');
+    
+    const years = Object.keys(yearlyFinancials);
+    if(years.length === 0) return;
+    
+    yearSelectors.forEach(id => {
+        const selector = document.getElementById(id);
+        const currentYear = selector.value || years[0];
+        selector.innerHTML = years.map(year => `<option value="${year}" ${year == currentYear ? 'selected' : ''}>${year}</option>`).join('');
+    });
+    
+    fofSelector.innerHTML = fofs.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+    fundSelector.innerHTML = funds.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+    investorSelector.innerHTML = investors.map(inv => `<option value="${inv.name}">${inv.name}</option>`).join('');
+}
+function renderJCurve(cashflows) {
+    const ctx = document.getElementById('jCurveChart').getContext('2d');
+    if (jCurveChartInstance) jCurveChartInstance.destroy();
+    if (cashflows.length === 0) return;
+    cashflows.sort((a, b) => new Date(a.date) - new Date(b.date));
+    let cumulative = 0;
+    const chartData = cashflows.map(cf => {
+        cumulative += cf.amount;
+        return { x: new Date(cf.date), y: cumulative };
+    });
+    jCurveChartInstance = new Chart(ctx, {
+        type: 'line', data: { datasets: [{ label: 'جریان نقدی خالص تجمعی', data: chartData, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.1 }] },
+        options: { scales: { x: { type: 'time', time: { unit: 'year' }, title: { display: true, text: 'سال' } }, y: { title: { display: true, text: 'مبلغ (ریال)' }, ticks: { callback: value => `${(value / 1e9).toLocaleString()}B` } } }, responsive: true, maintainAspectRatio: true, animation: { duration: 1000 } }
+    });
+}
+function renderAllocationChart() {
+    const ctx = document.getElementById('allocationChart').getContext('2d');
+    if (allocationChartInstance) allocationChartInstance.destroy();
+    let vcTotal = 0, peTotal = 0;
+    portfolioData.forEach(inv => {
+        const fof = fofs.find(f => f.name === inv.fof);
+        const fund = funds.find(f => f.name === inv.fund);
+        if (!fof || !fund) return;
+        const fx = fof.currency === 'USD' ? generalInputs.fxRate : 1;
+        const multiplier = fof.currency === 'USD' ? 1e6 : 1e9;
+        if(fund.type === 'VC') vcTotal += fund.numCompanies * fund.avgInvestmentPerCo * multiplier * fx;
+        else peTotal += (inv.amount || 0) * multiplier * fx;
+    });
+    allocationChartInstance = new Chart(ctx, {
+        type: 'doughnut', data: { labels: ['Venture Capital (VC)', 'Private Equity (PE)'], datasets: [{ data: [vcTotal, peTotal], backgroundColor: ['#34d399', '#fbbf24'], borderColor: '#ffffff', borderWidth: 2 }] },
+        options: { responsive: true, plugins: { legend: { position: 'top' } }, animation: { animateScale: true, animateRotate: true } }
+    });
+}
+function renderCommitmentChart() {
+    const ctx = document.getElementById('commitmentChart').getContext('2d');
+    if (commitmentChartInstance) commitmentChartInstance.destroy();
+    const labels = investors.map(inv => inv.name);
+    const data = investors.map(inv => inv.commitment);
+    commitmentChartInstance = new Chart(ctx, {
+        type: 'bar', data: { labels: labels, datasets: [{ label: 'مبلغ تعهد (میلیارد ریال)', data: data, backgroundColor: ['#60a5fa', '#3b82f6', '#2563eb'] }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } }, animation: { duration: 1000 } }
+    });
+}
+function updateFinancialStatementsView() {
+    const entity = document.getElementById('fs_entity_selector').value;
+    document.getElementById('fs_fof_selector_div').style.display = (entity === 'fof') ? 'block' : 'none';
+    document.getElementById('fs_fund_selector_div').style.display = (entity === 'funds') ? 'block' : 'none';
+    document.getElementById('fs_investor_selector_div').style.display = (entity === 'investors') ? 'block' : 'none';
+    renderFinancialStatements();
+}
+function renderFinancialStatements() {
+    const outputDiv = document.getElementById('fs_output');
+    const entity = document.getElementById('fs_entity_selector').value;
+    const selectedYear = parseInt(document.getElementById('fs_year_selector').value);
+    if (isNaN(selectedYear)) { outputDiv.innerHTML = `<p class="text-gray-500">لطفا یک سال را انتخاب کنید.</p>`; return; }
+    
+    outputDiv.innerHTML = ''; 
+
+    switch(entity) {
+        case 'manager_co':
+             outputDiv.innerHTML = generateManagerCoStatement(selectedYear);
+             break;
+        case 'fof':
+            const selectedFofName = document.getElementById('fs_fof_selector').value;
+            if (!selectedFofName) { outputDiv.innerHTML = `<p class="text-gray-500">لطفا یک FOF را انتخاب کنید.</p>`; return; }
+            outputDiv.innerHTML = generateFofStatements(selectedFofName, selectedYear);
+            break;
+        case 'funds':
+            const selectedFundName = document.getElementById('fs_fund_selector').value;
+            if (!selectedFundName) { outputDiv.innerHTML = `<p class="text-gray-500">لطفا یک صندوق را انتخاب کنید.</p>`; return; }
+            outputDiv.innerHTML = generateFundStatements(selectedFundName, selectedYear);
+            break;
+        case 'investors':
+            const selectedInvestorName = document.getElementById('fs_investor_selector').value;
+            if (!selectedInvestorName) { outputDiv.innerHTML = `<p class="text-gray-500">لطفا یک سرمایه‌گذار را انتخاب کنید.</p>`; return; }
+            outputDiv.innerHTML = generateInvestorCapitalAccount(selectedInvestorName, selectedYear);
+            break;
+    }
+}
+
+function generateManagerCoStatement(year) {
+    if (!yearlyFinancials[year] || !yearlyFinancials[year].managerCo) return `<p>اطلاعاتی برای سال ${year} یافت نشد.</p>`;
+    const data = yearlyFinancials[year].managerCo;
+    const format = (num) => `${(num / 1e9).toLocaleString('fa-IR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+     return `
+        <div class="border rounded-lg overflow-hidden">
+            <h4 class="text-lg font-bold p-4 bg-gray-50 border-b">صورت سود و زیان ManagerCo - سال ${year} (میلیارد ریال)</h4>
+            <table class="fs-table">
+                <tbody>
+                    <tr><td>درآمد کارمزد مدیریت</td><td class="text-green-600">+ ${format(data.feeIncome)}</td></tr>
+                    <tr><td>هزینه‌های عملیاتی</td><td class="text-red-600">- ${format(data.expenses)}</td></tr>
+                    <tr class="total-row"><td>سود قبل از بهره و مالیات (EBIT)</td><td>${format(data.ebit)}</td></tr>
+                </tbody>
+            </table>
+        </div>`;
+}
+
+function generateFofStatements(fofName, year) {
+    if (!yearlyFinancials[year] || !yearlyFinancials[year].fofs[fofName]) return `<p>اطلاعاتی برای سال ${year} یافت نشد.</p>`;
+    const data = yearlyFinancials[year].fofs[fofName];
+    const format = (num) => `${(num / 1e9).toLocaleString('fa-IR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `
+        <div class="border rounded-lg overflow-hidden">
+            <h4 class="text-lg font-bold p-4 bg-gray-50 border-b">خلاصه فعالیت FOF: ${fofName} - سال ${year} (میلیارد ریال)</h4>
+            <table class="fs-table">
+                <tbody>
+                    <tr><td>آورده از سرمایه‌گذاران (LP)</td><td class="text-green-600">+ ${format(data.callsToFundsIRR + data.managementFee)}</td></tr>
+                    <tr><td>دریافت از صندوق‌ها</td><td class="text-green-600">+ ${format(data.distFromFundsIRR)}</td></tr>
+                    <tr class="border-t"><td>پرداخت به صندوق‌ها</td><td class="text-red-600">- ${format(data.callsToFundsIRR)}</td></tr>
+                    <tr><td>پرداخت کارمزد مدیریت</td><td class="text-red-600">- ${format(data.managementFee)}</td></tr>
+                    <tr class="total-row"><td>خالص ارزش دارایی (NAV) پایان دوره</td><td>${format(data.nav)}</td></tr>
+                </tbody>
+            </table>
+        </div>`;
+}
+function generateFundStatements(fundName, year) {
+    if (!yearlyFinancials[year] || !yearlyFinancials[year].funds[fundName]) return `<p>اطلاعاتی برای سال ${year} یافت نشد.</p>`;
+    const data = yearlyFinancials[year].funds[fundName];
+    const format = (num) => `${(num / 1e9).toLocaleString('fa-IR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `
+        <div class="border rounded-lg overflow-hidden">
+            <h4 class="text-lg font-bold p-4 bg-gray-50 border-b">جریان نقدی: ${fundName} - سال ${year} (میلیارد)</h4>
+            <table class="fs-table">
+                <tbody>
+                    <tr><td>آورده از FOFs</td><td class="text-green-600">+ ${format(data.callsFromFofs)}</td></tr>
+                    <tr><td>توزیع سود به FOFs</td><td class="text-red-600">- ${format(data.distToFofs)}</td></tr>
+                    <tr class="total-row"><td>جریان نقدی خالص</td><td>${format(data.callsFromFofs - data.distToFofs)}</td></tr>
+                </tbody>
+            </table>
+        </div>`;
+}
+function generateInvestorCapitalAccount(investorName, year) {
+    if (!yearlyFinancials[year] || !yearlyFinancials[year].investors[investorName]) return `<p>اطلاعاتی برای سال ${year} یافت نشد.</p>`;
+    const data = yearlyFinancials[year].investors[investorName];
+    const format = (num) => `${(num / 1e9).toLocaleString('fa-IR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `
+        <div class="border rounded-lg overflow-hidden">
+            <h4 class="text-lg font-bold p-4 bg-gray-50 border-b">حساب سرمایه: ${investorName} - سال ${year} (میلیارد ریال)</h4>
+            <table class="fs-table">
+                <tbody>
+                    <tr><td>موجودی اول دوره</td><td>${format(data.openingBalance)}</td></tr>
+                    <tr><td>آورده (Contribution)</td><td class="text-red-600">${format(data.contributions)}</td></tr>
+                    <tr><td>برداشت (Distribution)</td><td class="text-green-600">${format(data.distributions)}</td></tr>
+                    <tr class="total-row"><td>موجودی پایان دوره</td><td>${format(data.closingBalance)}</td></tr>
+                </tbody>
+            </table>
+        </div>`;
+}
+function renderOrgChart() {
+    const container = document.getElementById('org_chart_container');
+    const foundationsHtml = `<div class="org-level">${investors.map((inv, i) => `<div id="foundation-node-${i}" class="org-node data-card"><div class="title">${inv.name}</div><div class="subtitle">LP</div></div>`).join('')}</div>`;
+    const fofsHtml = `<div class="org-level">${fofs.map((f, i) => `<div id="fof-node-${i}" class="org-node data-card fof ${f.currency}"><div class="title">${f.name}</div><div class="subtitle">${f.currency}</div></div>`).join('')}</div>`;
+    const fundsHtml = `<div class="org-level">${funds.map((fund, index) => `<div id="fund-node-${index}" class="org-node data-card ${fund.type.toLowerCase()}"><div class="title">${fund.name}</div><div class="subtitle">${fund.type}</div></div>`).join('')}</div>`;
+    container.innerHTML = `<div class="org-chart"><div id="org-svg-container" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:0;"></div>${foundationsHtml}${fofsHtml}${fundsHtml}</div>`;
+    setTimeout(drawOrgChartConnections, 100);
+}
+function drawOrgChartConnections() {
+    const svgContainer = document.getElementById('org-svg-container');
+    if (!svgContainer) return;
+    svgContainer.innerHTML = '';
+    const selectedYear = parseInt(document.getElementById('org_year_selector').value);
+    if(isNaN(selectedYear) || !yearlyFinancials[selectedYear]) return;
+
+    let svgElements = '';
+    const defs = `<defs><marker id="arrow-black" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L10,3.5 L0,7 Z" fill="#111827" /></marker><marker id="arrow-green" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L10,3.5 L0,7 Z" fill="#16a34a" /></marker><marker id="arrow-red" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L10,3.5 L0,7 Z" fill="#dc2626" /></marker></defs>`;
+    
+    investors.forEach((_, invIndex) => { fofs.forEach((_, fofIndex) => { svgElements += createSvgPath(document.getElementById(`foundation-node-${invIndex}`), document.getElementById(`fof-node-${fofIndex}`), '#111827', '', false); }); });
+    
+    const uniqueLinks = [...new Set(portfolioData.map(p => `${p.fof}|${p.fund}`))];
+    uniqueLinks.forEach(link => {
+        const [fofName, fundName] = link.split('|');
+        const fofIndex = fofs.findIndex(f => f.name === fofName);
+        const fundIndex = funds.findIndex(f => f.name === fundName);
+        if(fofIndex === -1 || fundIndex === -1) return;
+
+        const fofEl = document.getElementById(`fof-node-${fofIndex}`);
+        const fundEl = document.getElementById(`fund-node-${fundIndex}`);
+
+        const yearData = yearlyFinancials[selectedYear];
+        const fofData = yearData.fofs[fofName];
+
+        if (!fofData) return;
+        
+        const hasInvestment = fofData.callsToFundsIRR > 0;
+        const hasDistribution = fofData.distFromFundsIRR > 0;
+        
+        if (!hasInvestment && !hasDistribution) {
+             svgElements += createSvgPath(fofEl, fundEl, '#aaaaaa', '', false);
+        }
+        if (hasInvestment) {
+            const amount = fofData.callsToFundsIRR / 1e9;
+            svgElements += createSvgPath(fofEl, fundEl, '#dc2626', `${amount.toFixed(1)}B`, true);
+        }
+        if (hasDistribution) {
+            const amount = fofData.distFromFundsIRR / 1e9;
+            svgElements += createSvgPath(fundEl, fofEl, '#16a34a', `${amount.toFixed(1)}B`, true);
+        }
+    });
+
+    svgContainer.innerHTML = `<svg style="width: 100%; height: 100%; overflow: visible;">${defs}${svgElements}</svg>`;
+}
+function createSvgPath(fromEl, toEl, color, text = '', isAnimated) {
+    if (!fromEl || !toEl) return '';
+    const container = fromEl.closest('.org-chart');
+    const containerRect = container.getBoundingClientRect();
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const from = { x: fromRect.left - containerRect.left + fromRect.width / 2, y: fromRect.top - containerRect.top + fromRect.height };
+    const to = { x: toRect.left - containerRect.left + toRect.width / 2, y: toRect.top - containerRect.top };
+    const yControlOffset = Math.abs(to.y - from.y) * 0.3 + 30;
+    const isInactive = color === '#aaaaaa';
+    const markerId = color === '#16a34a' ? 'arrow-green' : color === '#dc2626' ? 'arrow-red' : 'arrow-black';
+    const pathClass = isAnimated ? 'animated-path' : '';
+    const path = `<path d="M ${from.x} ${from.y} C ${from.x} ${from.y + yControlOffset}, ${to.x} ${to.y - yControlOffset}, ${to.x} ${to.y}" stroke="${color}" stroke-width="${isInactive ? 1.5 : 2}" fill="none" class="${pathClass}" ${!isInactive ? `marker-end="url(#${markerId})"` : ''} ${isInactive ? `stroke-dasharray="4 4"`: ''}/>`;
+    const textEl = text ? `<text x="${(from.x + to.x) / 2}" y="${(from.y + to.y) / 2}" fill="${color}" text-anchor="middle" class="cashflow-text" style="animation: fadeIn 2s ease-out forwards; opacity: 0;">${text}</text>` : '';
+    return path + textEl;
+}
+function renderMcChart(results) {
+    const ctx = document.getElementById('mcChart').getContext('2d');
+    if (mcChartInstance) mcChartInstance.destroy();
+    if(results.length === 0) return;
+    const maxVal = Math.max(...results);
+    const binCount = 30;
+    const binWidth = maxVal > 0 ? maxVal / binCount : 1;
+    const bins = new Array(binCount).fill(0);
+    const labels = new Array(binCount).fill(0).map((_, i) => (i * binWidth).toFixed(1));
+    results.forEach(val => {
+        const binIndex = Math.min(Math.floor(val / binWidth), binCount - 1);
+        if (binIndex >= 0) bins[binIndex]++;
+    });
+    mcChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: 'توزیع TVPI', data: bins, backgroundColor: 'rgba(75, 192, 192, 0.6)' }] },
+        options: { scales: { x: { title: { display: true, text: 'ضریب TVPI' } }, y: { title: { display: true, text: 'تعداد تکرار' } } } }
+    });
+}
+
+function animateValue(element, start, end, duration, isBillion = false, suffix = '') {
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        let currentValue = progress * (end - start) + start;
+        if (isBillion) {
+            element.textContent = `${currentValue.toLocaleString('fa-IR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}B`;
+        } else {
+            element.textContent = `${currentValue.toFixed(2)}${suffix}`;
+        }
+        if (progress < 1) {
+            window.requestAnimationFrame(step);
+        }
+    };
+    window.requestAnimationFrame(step);
+}
+</script>
+</body>
+</html>
+
